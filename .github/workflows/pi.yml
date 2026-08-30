@@ -14,6 +14,12 @@ on:
         required: true
       gh_token:
         required: true
+      opengist_token:
+        # Opengist access token (og_…) used by the opengist share provider.
+        # Must be declared here so callers can pass it through — reusable
+        # workflows only see secrets listed under `workflow_call.secrets`, so
+        # an undeclared `secrets.OPENGIST_TOKEN` silently resolves to empty.
+        required: false
 
 permissions:
   contents: write
@@ -23,34 +29,42 @@ permissions:
 jobs:
   pi-agent:
     if: |
-      startsWith(github.event.comment.body, '/pi') &&
+      (startsWith(github.event.comment.body, '/pi ') || startsWith(github.event.review.body, '/pi ')) &&
       (inputs.allowed_actor == '' || github.actor == inputs.allowed_actor)
 
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref || '' }}
           fetch-depth: 0
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
 
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
       - name: Run Pi agent
-        uses: shaftoe/pi-coding-agent-action@v2
+        id: pi
+        uses: shaftoe/pi-coding-agent-action@develop
+        env:
+          PI_SHARE_VIEWER_URL: https://gistviewer.l3x.in/
         with:
+          share_session: true
+          share_gist_provider: opengist
+          share_gist_api_url: https://gist.l3x.in/api/gists
+          share_gist_token: ${{ secrets.opengist_token }}
           github_token: ${{ secrets.gh_token }}
           provider: ${{ vars.PROVIDER }}
           model: ${{ vars.MODEL }}
           token: ${{ secrets.token }}
           thinking_level: ${{ vars.THINKING_LEVEL }}
           prompt: ${{ inputs.prompt }}
-          extensions: |
-            npm:pi-librarian
+          diff_ignore_patterns: 'dist/ pnpm-lock.yaml node_modules/'
+
+      - uses: actions/upload-artifact@v7
+        if: ${{ steps.pi.outputs.session_html_path }}
+        with:
+          name: pi-session-html-${{ github.event.issue.number || github.event.pull_request.number || github.run_number }}
+          path: ${{ steps.pi.outputs.session_html_path }}

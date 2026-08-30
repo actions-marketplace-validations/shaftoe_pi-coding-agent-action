@@ -2,7 +2,7 @@ name: Review PR
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, edited, synchronize]
 
 permissions:
   contents: write
@@ -11,9 +11,42 @@ permissions:
 
 jobs:
   pi-agent:
-    uses: ./.github/workflows/pi.yml
-    with:
-      prompt: This is a GitHub PR (#${{ github.event.pull_request.number }}) that needs code review. Focus on identifying issues, bugs, security concerns, and improvements.
-    secrets:
-      gh_token: ${{ secrets.GITHUB_TOKEN }}
-      token: ${{ secrets.API_KEY }}
+    if: github.event.pull_request.head.repo.fork == false
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref || '' }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Run Pi agent
+        id: pi
+        uses: shaftoe/pi-coding-agent-action@develop
+        with:
+          export_session_html: true
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          provider: ${{ vars.PROVIDER }}
+          model: ${{ vars.MODEL }}
+          token: ${{ secrets.API_KEY }}
+          thinking_level: ${{ vars.THINKING_LEVEL }}
+          diff_ignore_patterns: 'dist/ pnpm-lock.yaml node_modules/'
+          prompt: |
+            This is a GitHub PR (#${{ github.event.pull_request.number }}) that needs code review. Focus on identifying issues, bugs, security concerns, and improvements. Don't apply any changes yourself, just review and suggest improvements.
+
+            Before reviewing, use get_issue_or_pr_thread to fetch any existing review comments so you don't duplicate feedback that has already been given.
+
+            If the change involves upgrading dependencies, with special focus on @earendil-works/pi-coding-agent, ensure the version is up-to-date and no breaking changes are introduced. If the change is a new feature, evaluate if it's interesting or useful and suggest a possible implementation to make use of it.
+
+            Once you're done, add your findings as comment to the PR.
+
+      - uses: actions/upload-artifact@v7
+        if: ${{ steps.pi.outputs.session_html_path }}
+        with:
+          name: pi-session-html-${{ github.event.issue.number || github.event.pull_request.number || github.run_number }}
+          path: ${{ steps.pi.outputs.session_html_path }}

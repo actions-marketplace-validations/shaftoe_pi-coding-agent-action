@@ -3,8 +3,10 @@ name: Pi AI Agent
 on:
   issue_comment:
     types: [created]
-  issues:
-    types: [opened, edited]
+  pull_request_review:
+    types: [submitted]
+  pull_request_review_comment:
+    types: [created]
 
 permissions:
   contents: write
@@ -17,5 +19,6 @@ jobs:
     with:
       allowed_actor: shaftoe
     secrets:
-      gh_token: ${{ secrets.GITHUB_TOKEN }}
+      gh_token: ${{ secrets.GH_PAT }} # Has Gists write access
       token: ${{ secrets.API_KEY }}
+      opengist_token: ${{ secrets.OPENGIST_TOKEN }}
